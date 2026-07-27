@@ -9,11 +9,9 @@ from models.database import engine, Base
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
-    # Shutdown
     await engine.dispose()
 
 app = FastAPI(
@@ -23,16 +21,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+# FIX #11: Restrict CORS — only needed methods and headers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:3001"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
-# Routes
 app.include_router(router, prefix="/api")
 
 @app.get("/health")

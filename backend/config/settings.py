@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
-import os
 
 class Settings(BaseSettings):
     # Database
@@ -14,7 +13,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # Auth (SuperAuth)
-    JWT_SECRET: str = "change-me-in-production"
+    JWT_SECRET: str  # FIX #12: Required — no default, must be set in .env
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
 

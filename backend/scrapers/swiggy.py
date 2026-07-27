@@ -1,18 +1,8 @@
+import re
 from scrapers.base import BaseScraper
 from datetime import datetime
-import re
 
 class SwiggyScraper(BaseScraper):
-    """
-    Swiggy/Instamart Partner Dashboard Scraper
-
-    Flow:
-    1. Navigate to partner.swiggy.com
-    2. Login with phone + OTP
-    3. Navigate to Payments section
-    4. Extract payment/settlement data
-    """
-
     LOGIN_URL = "https://partner.swiggy.com"
     PAYMENTS_URL = "https://partner.swiggy.com/payments"
 
@@ -29,20 +19,17 @@ class SwiggyScraper(BaseScraper):
             if not self.page:
                 raise Exception("Page not initialized")
 
-            # Navigate to partner portal
             await self.page.goto(self.LOGIN_URL, wait_until="networkidle")
             screenshots.append(await self.screenshot("login-page"))
 
-            # Login with phone
             phone_input = await self.page.query_selector('input[type="phone"], input[name="phone"]')
             if phone_input and credentials.get("phone"):
                 await phone_input.fill(credentials["phone"])
                 await self.page.click('button[type="submit"]')
 
-                # Wait for OTP input
                 try:
                     await self.page.wait_for_selector('input[name="otp"], input[placeholder*="OTP"]', timeout=30000)
-                except:
+                except Exception:
                     screenshots.append(await self.screenshot("otp-timeout"))
                     return {"records": [], "errors": ["OTP input not found"], "screenshots": screenshots}
 
@@ -51,15 +38,17 @@ class SwiggyScraper(BaseScraper):
                     await self.page.click('button[type="submit"]')
                     await self.page.wait_for_load_state("networkidle")
 
-            # Navigate to payments
             await self.page.goto(self.PAYMENTS_URL, wait_until="networkidle")
             screenshots.append(await self.screenshot("payments-page"))
 
-            # Extract payment data
-            payment_data = await self.page.eval_on_selector_all(
-                ".payment-card, .settlement-card, .transaction-row, [data-testid*='payment']",
-                "elements => elements.map(el => el.textContent.trim())",
-            ).catch(lambda _: [])
+            # FIX #9: Use try/except instead of .catch() which doesn't work on Python awaits
+            try:
+                payment_data = await self.page.eval_on_selector_all(
+                    ".payment-card, .settlement-card, .transaction-row, [data-testid*='payment']",
+                    "elements => elements.map(el => el.textContent.trim())",
+                )
+            except Exception:
+                payment_data = []
 
             if not payment_data:
                 errors.append("No payment data found. Swiggy may require PDF statement parsing.")
@@ -83,9 +72,7 @@ class SwiggyScraper(BaseScraper):
         return {"records": records, "errors": errors, "screenshots": screenshots}
 
     def _parse_payment_text(self, text: str) -> dict:
-        # Extract order ID
         order_match = re.search(r"Order\s*(?:ID|#)?\s*:?\s*(\w+)", text, re.IGNORECASE)
-        # Extract amounts
         amounts = re.findall(r"₹\s*([\d,]+\.?\d*)", text)
 
         if not order_match or len(amounts) < 2:

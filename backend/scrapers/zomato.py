@@ -1,18 +1,8 @@
+import re
 from scrapers.base import BaseScraper
 from datetime import datetime
-from typing import List, Dict
 
 class ZomatoScraper(BaseScraper):
-    """
-    Zomato/Blinkit Seller Dashboard Scraper
-
-    Flow:
-    1. Navigate to business.zomato.com
-    2. Login with credentials
-    3. Navigate to Payments section
-    4. Extract order and payment data
-    """
-
     LOGIN_URL = "https://business.zomato.com"
     PAYMENTS_URL = "https://business.zomato.com/payments"
 
@@ -29,39 +19,33 @@ class ZomatoScraper(BaseScraper):
             if not self.page:
                 raise Exception("Page not initialized")
 
-            # Navigate to login
             await self.page.goto(self.LOGIN_URL, wait_until="networkidle")
             screenshots.append(await self.screenshot("login-page"))
 
-            # Check if logged in
             logged_in = await self.page.query_selector(".dashboard-content, .orders-section")
 
             if not logged_in and credentials.get("email"):
-                # Login
                 await self.page.fill('input[type="email"], input[name="email"]', credentials["email"])
                 await self.page.fill('input[type="password"], input[name="password"]', credentials["password"])
                 await self.page.click('button[type="submit"]')
                 await self.page.wait_for_load_state("networkidle")
                 screenshots.append(await self.screenshot("after-login"))
 
-                # Handle OTP if needed
                 otp_input = await self.page.query_selector('input[name="otp"], input[placeholder*="OTP"]')
                 if otp_input and credentials.get("otp"):
                     await otp_input.fill(credentials["otp"])
                     await self.page.click('button[type="submit"]')
                     await self.page.wait_for_load_state("networkidle")
 
-            # Navigate to payments
             await self.page.goto(self.PAYMENTS_URL, wait_until="networkidle")
             try:
                 await self.page.wait_for_selector(".payment-list, .settlement-list, table", timeout=10000)
-            except:
+            except Exception:
                 screenshots.append(await self.screenshot("no-payment-data"))
                 return {"records": [], "errors": ["Could not find payment data"], "screenshots": screenshots}
 
             screenshots.append(await self.screenshot("payments-page"))
 
-            # Extract data
             rows = await self.page.eval_on_selector_all(
                 ".payment-row, .settlement-row, table tbody tr",
                 """rows => rows.map(row => {
@@ -87,6 +71,7 @@ class ZomatoScraper(BaseScraper):
 
         return {"records": records, "errors": errors, "screenshots": screenshots}
 
+    # FIX #8: Use re.sub() for proper regex replacement
     def _parse_row(self, cells: list) -> dict:
         if len(cells) < 5:
             return None
@@ -104,7 +89,7 @@ class ZomatoScraper(BaseScraper):
         expected_commission = (expected_rate / 100) * total_price
 
         return {
-            "order_id": order_id.replace(r"[^\w-]", ""),
+            "order_id": re.sub(r"[^\w-]", "", order_id),
             "order_date": datetime.now(),
             "item_description": item,
             "item_quantity": 1,

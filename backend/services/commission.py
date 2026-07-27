@@ -1,8 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from typing import Optional, List, Dict
-from datetime import datetime
-from models.payment import PaymentRecord, Platform
+from sqlalchemy import select, text
+from typing import Optional, List
+from datetime import datetime, timezone
+from models.payment import PaymentRecord, Platform, CommissionRate
 
 DEFAULT_RATES = {
     "zomato": 18,
@@ -15,14 +15,12 @@ class CommissionService:
     async def get_expected_rate(
         self, db: AsyncSession, platform: Platform, category: str = "*"
     ) -> float:
-        # Check custom rates first
-        from models.payment import CommissionRate
         result = await db.execute(
             select(CommissionRate)
             .where(
                 CommissionRate.platform == platform,
                 CommissionRate.category.in_([category, "*"]),
-                CommissionRate.effective_from <= datetime.utcnow(),
+                CommissionRate.effective_from <= datetime.now(timezone.utc),
             )
             .order_by(CommissionRate.effective_from.desc())
             .limit(1)
@@ -30,7 +28,6 @@ class CommissionService:
         custom_rate = result.scalar_one_or_none()
         if custom_rate:
             return custom_rate.base_rate
-
         return DEFAULT_RATES.get(platform.value, 15)
 
     def calculate_commission(
@@ -49,7 +46,13 @@ class CommissionService:
     ) -> List[dict]:
         alerts = []
         for record in records:
-            expected_rate = DEFAULT_RATES.get(record.platform, 15)
+            # FIX #5: Use the record's stored rate, not the hardcoded default
+            expected_rate = record.expected_commission_rate or DEFAULT_RATES.get(record.platform, 15)
+
+            # FIX #7: Guard against division by zero
+            if record.total_price <= 0:
+                continue
+
             result = self.calculate_commission(
                 record.total_price, expected_rate, record.actual_commission_charged
             )
@@ -78,6 +81,7 @@ class CommissionService:
 
         return sorted(alerts, key=lambda x: abs(x["difference"]), reverse=True)
 
+    # FIX #3: Use parameterized queries (text() with named params) instead of raw string concatenation
     async def get_summary(
         self,
         db: AsyncSession,
@@ -86,7 +90,7 @@ class CommissionService:
         end_date: datetime,
         platform: Optional[Platform] = None,
     ) -> List[dict]:
-        query = """
+        query = text("""
             SELECT
                 platform,
                 DATE_TRUNC('month', order_date) AS period,
@@ -101,16 +105,17 @@ class CommissionService:
             WHERE user_id = :user_id
             AND order_date >= :start_date
             AND order_date <= :end_date
-        """
-        params = {"user_id": user_id, "start_date": start_date, "end_date": end_date}
+            AND (:platform_filter IS NULL OR platform = :platform_filter)
+            GROUP BY platform, DATE_TRUNC('month', order_date)
+            ORDER BY period DESC
+        """)
 
-        if platform:
-            query += " AND platform = :platform"
-            params["platform"] = platform.value
-
-        query += " GROUP BY platform, DATE_TRUNC('month', order_date) ORDER BY period DESC"
-
-        result = await db.execute(query, params)
+        result = await db.execute(query, {
+            "user_id": user_id,
+            "start_date": start_date,
+            "end_date": end_date,
+            "platform_filter": platform.value if platform else None,
+        })
         rows = result.fetchall()
 
         return [
@@ -131,7 +136,7 @@ class CommissionService:
     async def get_total_overcharged(
         self, db: AsyncSession, user_id, start_date: datetime, end_date: datetime
     ) -> dict:
-        query = """
+        query = text("""
             SELECT
                 platform,
                 SUM(commission_difference) AS overcharged
@@ -140,8 +145,12 @@ class CommissionService:
             AND order_date >= :start_date
             AND order_date <= :end_date
             GROUP BY platform
-        """
-        result = await db.execute(query, {"user_id": user_id, "start_date": start_date, "end_date": end_date})
+        """)
+        result = await db.execute(query, {
+            "user_id": user_id,
+            "start_date": start_date,
+            "end_date": end_date,
+        })
         rows = result.fetchall()
 
         by_platform = {}
@@ -161,12 +170,11 @@ class CommissionService:
         rate: float,
         effective_from: Optional[datetime] = None,
     ):
-        from models.payment import CommissionRate
         new_rate = CommissionRate(
             platform=platform,
             category=category,
             base_rate=rate,
-            effective_from=effective_from or datetime.utcnow(),
+            effective_from=effective_from or datetime.now(timezone.utc),
         )
         db.add(new_rate)
         await db.commit()

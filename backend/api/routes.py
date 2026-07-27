@@ -1,18 +1,47 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from sqlalchemy.orm import selectinload
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime
 from pydantic import BaseModel
 import uuid
+import jwt
 
 from models.database import get_db
 from models.payment import PaymentRecord, Platform, User, PlatformCredential
 from services.commission import CommissionService
+from config.settings import settings
 
 router = APIRouter()
 commission_service = CommissionService()
+
+# ===== Auth Helper =====
+# FIX #1 & #2: JWT authentication — user_id comes from token, not query params
+
+async def get_current_user(
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+
+    token = authorization.replace("Bearer ", "")
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    return user
 
 # ===== Pydantic Models =====
 
@@ -75,15 +104,15 @@ class AlertResponse(BaseModel):
 
 @router.get("/payments", response_model=PaymentListResponse)
 async def get_payments(
-    user_id: uuid.UUID,
     platform: Optional[Platform] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    query = select(PaymentRecord).where(PaymentRecord.user_id == user_id)
+    query = select(PaymentRecord).where(PaymentRecord.user_id == current_user.id)
 
     if platform:
         query = query.where(PaymentRecord.platform == platform)
@@ -92,12 +121,10 @@ async def get_payments(
     if end_date:
         query = query.where(PaymentRecord.order_date <= end_date)
 
-    # Count total
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar()
 
-    # Paginate
     offset = (page - 1) * limit
     query = query.order_by(PaymentRecord.order_date.desc()).offset(offset).limit(limit)
     result = await db.execute(query)
@@ -109,30 +136,30 @@ async def get_payments(
             "page": page,
             "limit": limit,
             "total": total,
-            "pages": (total + limit - 1) // limit,
+            "pages": max(1, (total + limit - 1) // limit),
         },
     )
 
 @router.get("/summary", response_model=List[SummaryResponse])
 async def get_summary(
-    user_id: uuid.UUID,
     start_date: datetime,
     end_date: datetime,
     platform: Optional[Platform] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    summary = await commission_service.get_summary(db, user_id, start_date, end_date, platform)
+    summary = await commission_service.get_summary(db, current_user.id, start_date, end_date, platform)
     return summary
 
 @router.get("/alerts", response_model=List[AlertResponse])
 async def get_alerts(
-    user_id: uuid.UUID,
     platform: Optional[Platform] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    query = select(PaymentRecord).where(PaymentRecord.user_id == user_id)
+    query = select(PaymentRecord).where(PaymentRecord.user_id == current_user.id)
 
     if platform:
         query = query.where(PaymentRecord.platform == platform)
@@ -150,36 +177,36 @@ async def get_alerts(
 
 @router.get("/overcharged", response_model=OverchargedResponse)
 async def get_overcharged(
-    user_id: uuid.UUID,
     start_date: datetime,
     end_date: datetime,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    result = await commission_service.get_total_overcharged(db, user_id, start_date, end_date)
+    result = await commission_service.get_total_overcharged(db, current_user.id, start_date, end_date)
     return result
 
 @router.post("/sync/{platform}")
 async def sync_platform(
     platform: Platform,
-    user_id: uuid.UUID,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     from services.connector import sync_from_api
-    result = await sync_from_api(db, user_id, platform, start_date, end_date)
+    result = await sync_from_api(db, current_user.id, platform, start_date, end_date)
     return result
 
 @router.post("/credentials")
 async def save_credentials(
-    user_id: uuid.UUID,
     platform: Platform,
     credentials: dict,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(PlatformCredential).where(
-            PlatformCredential.user_id == user_id,
+            PlatformCredential.user_id == current_user.id,
             PlatformCredential.platform == platform,
         )
     )
@@ -190,7 +217,7 @@ async def save_credentials(
         existing.is_active = True
     else:
         new_cred = PlatformCredential(
-            user_id=user_id,
+            user_id=current_user.id,
             platform=platform,
             credentials=credentials,
         )
@@ -199,13 +226,13 @@ async def save_credentials(
     await db.commit()
     return {"success": True}
 
-@router.get("/credentials/{user_id}")
+@router.get("/credentials")
 async def list_credentials(
-    user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(PlatformCredential).where(PlatformCredential.user_id == user_id)
+        select(PlatformCredential).where(PlatformCredential.user_id == current_user.id)
     )
     creds = result.scalars().all()
     return [
@@ -225,6 +252,7 @@ async def add_custom_rate(
     rate: float,
     effective_from: Optional[datetime] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     await commission_service.add_custom_rate(db, platform, category, rate, effective_from)
     return {"success": True}

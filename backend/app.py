@@ -5,6 +5,7 @@ import uvicorn
 
 from config.settings import settings
 from api.routes import router
+from api.auth import router as auth_router
 from models.database import engine, Base
 
 @asynccontextmanager
@@ -30,6 +31,10 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+# Auth routes (no prefix — auth.py handles its own prefix)
+app.include_router(auth_router)
+
+# API routes
 app.include_router(router, prefix="/api")
 
 @app.get("/health")

@@ -1,0 +1,38 @@
+# Web framework
+fastapi==0.108.0
+uvicorn[standard]==0.25.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.23
+asyncpg==0.29.0
+alembic==1.13.0
+greenlet==3.0.3
+
+# Redis
+redis[hiredis]==5.0.1
+
+# Scraping
+playwright==1.41.0
+
+# Data processing
+pandas==2.1.4
+openpyxl==3.1.2
+pdfplumber==0.10.3
+
+# Auth
+pyjwt==2.8.0
+passlib[bcrypt]==1.7.4
+
+# Validation
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# HTTP client
+httpx==0.26.0
+
+# Environment
+python-dotenv==1.0.0
+
+# Date handling
+python-dateutil==2.8.2

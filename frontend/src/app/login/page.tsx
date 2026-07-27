@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { setToken, setRefreshToken } from '@/lib/auth';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = '';  // Use Next.js proxy
 
 export default function LoginPage() {
   const router = useRouter();

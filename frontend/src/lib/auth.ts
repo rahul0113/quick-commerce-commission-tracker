@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:8000';
+const API_URL = '';  // Use Next.js proxy (relative URLs)
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
   const token = getToken();

@@ -1,0 +1,61 @@
+{
+  "name": "Security Tests",
+  "type": "backend",
+  "base_url": "http://localhost:8000",
+  "tests": [
+    {
+      "name": "SQL Injection Attempt",
+      "method": "GET",
+      "path": "/api/payments?platform=zomato%27%20OR%201%3D1--",
+      "auth": true,
+      "expected_status": 200,
+      "expected_behavior": "Should not return unauthorized data"
+    },
+    {
+      "name": "XSS in Order ID",
+      "method": "POST",
+      "path": "/api/credentials?platform=zomato",
+      "auth": true,
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "<script>alert('xss')</script>",
+        "password": "test"
+      },
+      "expected_status": 400,
+      "expected_behavior": "Should sanitize or reject"
+    },
+    {
+      "name": "Expired Token",
+      "method": "GET",
+      "path": "/api/payments",
+      "headers": {
+        "Authorization": "Bearer expired-token-here"
+      },
+      "expected_status": 401
+    },
+    {
+      "name": "Missing Auth Header",
+      "method": "GET",
+      "path": "/api/payments",
+      "expected_status": 401
+    },
+    {
+      "name": "Invalid Token Format",
+      "method": "GET",
+      "path": "/api/payments",
+      "headers": {
+        "Authorization": "InvalidFormat token123"
+      },
+      "expected_status": 401
+    },
+    {
+      "name": "Rate Limiting",
+      "method": "GET",
+      "path": "/health",
+      "repeat": 110,
+      "expected_behavior": "Should return 429 after 100 requests"
+    }
+  ]
+}

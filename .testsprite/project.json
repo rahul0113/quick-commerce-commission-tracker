@@ -1,0 +1,33 @@
+{
+  "name": "quick-commerce-commission-tracker",
+  "version": "1.0.0",
+  "description": "Track and calculate commissions across Indian quick commerce platforms",
+  "type": "fullstack",
+  "backend": {
+    "framework": "fastapi",
+    "language": "python",
+    "port": 8000,
+    "base_url": "http://localhost:8000"
+  },
+  "frontend": {
+    "framework": "nextjs",
+    "language": "typescript",
+    "port": 3000,
+    "base_url": "http://localhost:3000"
+  },
+  "database": {
+    "type": "postgresql",
+    "url_env": "DATABASE_URL"
+  },
+  "auth": {
+    "type": "jwt",
+    "login_endpoint": "/api/auth/login",
+    "token_header": "Authorization",
+    "token_prefix": "Bearer"
+  },
+  "test_types": [
+    "backend_api",
+    "frontend_ui",
+    "integration"
+  ]
+}

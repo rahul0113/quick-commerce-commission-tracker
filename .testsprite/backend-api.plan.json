@@ -1,0 +1,190 @@
+{
+  "name": "Backend API Tests",
+  "type": "backend",
+  "base_url": "http://localhost:8000",
+  "tests": [
+    {
+      "name": "Health Check",
+      "method": "GET",
+      "path": "/health",
+      "expected_status": 200,
+      "expected_response": {
+        "status": "ok"
+      }
+    },
+    {
+      "name": "Register User",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "test@example.com",
+        "password": "testpass123",
+        "name": "Test User"
+      },
+      "expected_status": 200,
+      "expected_response": {
+        "access_token": "string",
+        "refresh_token": "string",
+        "token_type": "bearer"
+      }
+    },
+    {
+      "name": "Login User",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "test@example.com",
+        "password": "testpass123"
+      },
+      "expected_status": 200,
+      "expected_response": {
+        "access_token": "string",
+        "refresh_token": "string"
+      }
+    },
+    {
+      "name": "Get Current User",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "auth": true,
+      "expected_status": 200,
+      "expected_response": {
+        "id": "string",
+        "email": "test@example.com",
+        "name": "Test User"
+      }
+    },
+    {
+      "name": "Refresh Token",
+      "method": "POST",
+      "path": "/api/auth/refresh",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "use_refresh_token": true,
+      "expected_status": 200,
+      "expected_response": {
+        "access_token": "string"
+      }
+    },
+    {
+      "name": "List Payments - No Auth",
+      "method": "GET",
+      "path": "/api/payments",
+      "expected_status": 401
+    },
+    {
+      "name": "List Payments - With Auth",
+      "method": "GET",
+      "path": "/api/payments",
+      "auth": true,
+      "expected_status": 200,
+      "expected_response": {
+        "data": "array",
+        "pagination": "object"
+      }
+    },
+    {
+      "name": "List Payments - With Platform Filter",
+      "method": "GET",
+      "path": "/api/payments?platform=zomato",
+      "auth": true,
+      "expected_status": 200
+    },
+    {
+      "name": "Commission Summary",
+      "method": "GET",
+      "path": "/api/summary?start_date=2026-07-01T00:00:00Z&end_date=2026-07-31T23:59:59Z",
+      "auth": true,
+      "expected_status": 200,
+      "expected_response": "array"
+    },
+    {
+      "name": "Commission Alerts",
+      "method": "GET",
+      "path": "/api/alerts",
+      "auth": true,
+      "expected_status": 200,
+      "expected_response": "array"
+    },
+    {
+      "name": "Overcharged Amount",
+      "method": "GET",
+      "path": "/api/overcharged?start_date=2026-07-01T00:00:00Z&end_date=2026-07-31T23:59:59Z",
+      "auth": true,
+      "expected_status": 200,
+      "expected_response": {
+        "total_overcharged": "number",
+        "by_platform": "object"
+      }
+    },
+    {
+      "name": "List Credentials",
+      "method": "GET",
+      "path": "/api/credentials",
+      "auth": true,
+      "expected_status": 200,
+      "expected_response": "array"
+    },
+    {
+      "name": "Save Credentials",
+      "method": "POST",
+      "path": "/api/credentials?platform=zomato",
+      "auth": true,
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "restaurant@email.com",
+        "password": "secret123"
+      },
+      "expected_status": 200,
+      "expected_response": {
+        "success": true
+      }
+    },
+    {
+      "name": "Sync Platform - No Credentials",
+      "method": "POST",
+      "path": "/api/sync/blinkit",
+      "auth": true,
+      "expected_status": 200,
+      "expected_response": {
+        "error": "No credentials found"
+      }
+    },
+    {
+      "name": "Add Custom Rate",
+      "method": "POST",
+      "path": "/api/rates?platform=zomato&category=pizza&rate=20",
+      "auth": true,
+      "expected_status": 200,
+      "expected_response": {
+        "success": true
+      }
+    },
+    {
+      "name": "Change Password",
+      "method": "POST",
+      "path": "/api/auth/change-password",
+      "auth": true,
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "current_password": "testpass123",
+        "new_password": "newpass456"
+      },
+      "expected_status": 200,
+      "expected_response": {
+        "success": true
+      }
+    }
+  ]
+}

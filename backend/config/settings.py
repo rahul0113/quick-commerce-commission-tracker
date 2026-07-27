@@ -1,29 +1,27 @@
-from pydantic_settings import BaseSettings
-from typing import Optional
+import os
+from dotenv import load_dotenv
 
-class Settings(BaseSettings):
+load_dotenv()
+
+class Settings:
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/commission_tracker"
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./commission_tracker.db")
 
     # Redis
-    REDIS_URL: str = "redis://localhost:6379"
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
 
     # Server
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    HOST: str = os.getenv("HOST", "0.0.0.0")
+    PORT: int = int(os.getenv("PORT", "8000"))
 
-    # Auth (SuperAuth)
-    JWT_SECRET: str  # FIX #12: Required — no default, must be set in .env
-    JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRATION_HOURS: int = 24
+    # Auth
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "dev-secret-change-in-production")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    JWT_EXPIRATION_HOURS: int = int(os.getenv("JWT_EXPIRATION_HOURS", "24"))
 
     # Scraping
-    SCRAPE_INTERVAL_HOURS: int = 6
-    SCRAPE_MAX_CONCURRENT: int = 2
-    HEADLESS_BROWSER: bool = True
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    SCRAPE_INTERVAL_HOURS: int = int(os.getenv("SCRAPE_INTERVAL_HOURS", "6"))
+    SCRAPE_MAX_CONCURRENT: int = int(os.getenv("SCRAPE_MAX_CONCURRENT", "2"))
+    HEADLESS_BROWSER: bool = os.getenv("HEADLESS_BROWSER", "true").lower() == "true"
 
 settings = Settings()

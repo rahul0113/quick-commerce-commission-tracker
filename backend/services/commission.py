@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from typing import Optional, List
 from datetime import datetime, timezone
-from models.payment import PaymentRecord, Platform, CommissionRate
+from models.payment import PaymentRecord, CommissionRate
 
 DEFAULT_RATES = {
     "zomato": 18,
@@ -13,7 +13,7 @@ DEFAULT_RATES = {
 
 class CommissionService:
     async def get_expected_rate(
-        self, db: AsyncSession, platform: Platform, category: str = "*"
+        self, db: AsyncSession, platform: str, category: str = "*"
     ) -> float:
         result = await db.execute(
             select(CommissionRate)
@@ -28,7 +28,7 @@ class CommissionService:
         custom_rate = result.scalar_one_or_none()
         if custom_rate:
             return custom_rate.base_rate
-        return DEFAULT_RATES.get(platform.value, 15)
+        return DEFAULT_RATES.get(platform, 15)
 
     def calculate_commission(
         self, total_price: float, expected_rate: float, actual_charged: float
@@ -46,10 +46,8 @@ class CommissionService:
     ) -> List[dict]:
         alerts = []
         for record in records:
-            # FIX #5: Use the record's stored rate, not the hardcoded default
             expected_rate = record.expected_commission_rate or DEFAULT_RATES.get(record.platform, 15)
 
-            # FIX #7: Guard against division by zero
             if record.total_price <= 0:
                 continue
 
@@ -81,14 +79,13 @@ class CommissionService:
 
         return sorted(alerts, key=lambda x: abs(x["difference"]), reverse=True)
 
-    # FIX #3: Use parameterized queries (text() with named params) instead of raw string concatenation
     async def get_summary(
         self,
         db: AsyncSession,
         user_id,
         start_date: datetime,
         end_date: datetime,
-        platform: Optional[Platform] = None,
+        platform: Optional[str] = None,
     ) -> List[dict]:
         query = text("""
             SELECT
@@ -114,7 +111,7 @@ class CommissionService:
             "user_id": user_id,
             "start_date": start_date,
             "end_date": end_date,
-            "platform_filter": platform.value if platform else None,
+            "platform_filter": platform,
         })
         rows = result.fetchall()
 
@@ -165,7 +162,7 @@ class CommissionService:
     async def add_custom_rate(
         self,
         db: AsyncSession,
-        platform: Platform,
+        platform: str,
         category: str,
         rate: float,
         effective_from: Optional[datetime] = None,
